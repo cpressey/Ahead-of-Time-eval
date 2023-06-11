@@ -40,7 +40,7 @@ consider a rule with a similarly operational character, which is:
 Since this is a kind of constant folding [[Footnote 2]](#footnote-2),
 we could follow the example of "proper tail recursion" and call this
 "proper constant folding"; however, that phrasing seems not quite fitting
-here, where the situation is slightly different.  So instead, we will
+in the current situation.  So instead, we will
 call this _aggressive constant folding_. [[Footnote 3]](#footnote-3)
 
 In this article, I'd like to demonstrate that the combination of
@@ -78,15 +78,19 @@ computed ahead of time, assuming the following things about f:
     arguments passed to `f`.
 
 (_How_ we determine whether `f` is referentially transparent and always
-terminating is an altogether different matter, but this is essentially
-irrelevant to the main point here. [[Footnote 4]](#footnote-4)
-For our demonstrations, we'll simply assume all the functions we are
+terminating is an altogether different matter, but it is essentially
+irrelevant to the main point here [[Footnote 4]](#footnote-4).
+For our demonstrations, we'll simply assume that all the functions we're
 working with are both referentially transparent and always terminating.)
 
 There is a third constraint:
 
 *   All names (apart from the formal parameters) used inside
     the definition of `f` are bound to constants.
+
+This third constraint is particularly relevant if `f` uses names
+that are defined in an outer scope, for example the formal variables
+of a function inside which `f` is defined.
 
 Now, if `(f a1 a2 ... a2)` can be computed ahead of time, we do so,
 then replace it (either conceptually or concretely) with the
@@ -105,10 +109,10 @@ There are a few more details we could mention:
 When analyzing an expression that contains a name, we must
 have some way of knowing if that name is bound to a constant,
 in order to determine if the expression is constant.  Typically
-some kind of environment structure mapping names to their
-values (if constant) or a distinguished "unknown" value (if not
-known to be constant) would be maintained during analysis.
-If a name is associated with "unknown", we must err on
+some kind of environment structure mapping names to values
+would be maintained during analysis.  When a name is discovered
+to refer to a constant, that name-value pair is added to this
+map.  If a name is not present in the map, we must err on
 the side of safety and assume it does not represent a constant.
 
 The propagation of constanthood will typically occur in some
@@ -121,18 +125,20 @@ to `t`, otherwise it reduces to `f`.
 ------------------
 
 To demonstrate our point about hygienic macros, the language
-will need an `eval` facility, and in order to have that, it will
-need a way to represent program texts as data structures, which
-feature as values in the semantics of programs in the language.
+will need an `eval` facility, and in order to employ that facility
+in a reasonable way, it will need a way to represent program texts
+as expressible values in the language.
 
 For concreteness we will call such values "phrases".
 
 We've already stated our language here is similar to Scheme, and
-the standard way to treat phrases in Scheme is as list structures
+the standard way to represent phrases in Scheme is as list structures
 containing sublists and atoms, and to have a `quote` construct which
 introduces literal phrases as expressions.
 
-We note that a `quote` form is a constant.
+Note that the `quote` form introduces a constant.  (Even in languages
+where phrases are represented in a different fashion, there will
+presumably be ways to produce a constant phrase.)
 
 Meanwhile, `eval` is a built-in function that takes a phrase and
 an environment, and evaluates to the value that
@@ -155,7 +161,8 @@ bound to a suitable integer multiplication function.
 Macros
 ------
 
-Given all of the above, a macro is nothing more than a function that happens to
+Given all of the above, a macro is nothing more than a referentially
+transparent, always-terminating function that happens to
 have been given constants as its actual parameters.  It will be
 reduced to a constant ahead of time, which matches perfectly
 the commonplace idea of what a macro is supposed to do.
@@ -183,10 +190,13 @@ Such manipulation is naturally hygienic.  This is because the environment passed
 to `eval` is explicitly given, and only the bindings in that environment will be
 used during the evaluation of `eval`.  Supplying only a standard environment,
 which does not contain any bindings specific to the active program, makes it
-impossible to capture such a binding during the evaluation of `eval`.
+impossible to capture a program binding during the evaluation of `eval`.
 
-It also makes it possible to strategically subvert hygiene, by manipulating the
-environment that is passed in so that it no longer resembles the "standard" one.
+It also makes it possible to strategically subvert hygiene, either by manipulating
+the environment that is passed in so that it no longer resembles the "standard" one,
+or by manipulating the phrase and replacing referents with other values.
+
+**TODO: there should be some more words on the subject of hygiene here.**
 
 **TODO: there should really be more examples here.**
 
@@ -206,16 +216,27 @@ new function when *any* of its arguments are constant; while aggressive constant
 folding only reduces the function to a constant when *all* of its arguments are
 constant.
 
+Is it related to staged computation?  Insofar as staged computation is a very
+general concept, it must be; like partial evaluation, it is a kind of "precomputation
+transformation", moving some computations to an earlier "stage".  On the other hand,
+this level of generality doesn't seem to be what most people mean when they use the
+term "staged computation".  Indeed, discussions of the concept seem to centre around
+compilation and generating executable code at runtime [[Footnote 6]](#footnote-6).
+But Ahead-of-Time `eval` happens ahead-of-time only, and need not involve compiling.
+
 Clearly it is also related to hygienic macros, but I refer back to my opinion at the
 beginning of the article.  Hygienic macro systems almost always seem to start with
 conventional (unhygienic) macros and then patch them up so that they're hygienic.
-This seems to approach the entire problem from a different angle, obviating the very
-need for macros in some instances.
+Ahead-of-Time `eval` seems to approach the entire problem from a different angle,
+obviating the very need for macros in some instances.
 
 It also seems to be related to evaluation techniques for functional languages,
 although my impression is that much of the existing work there is to support
-more performant ways of implementing lazy languages.  Ahead-of-Time eval
-addresses performance in much the same way macros do, but that is not their goal.
+more performant ways of implementing lazy languages.  Ahead-of-Time eval can
+perform optimization in much the same way macros do, and in much the same
+way memoization does, by computing a result once and using it many
+times instead of recomputing it each time.  But, like macros, it not restricted
+to memoization.
 
 - - - -
 
@@ -233,8 +254,8 @@ rather than as a language specification rule as we're doing here.
 
 #### Footnote 3
 
-We also avoid the phrase "compile-time" as is technically inaccurate, as we might never actually
-compile the given code; instead we say "ahead of time".
+We also avoid the phrase "compile-time" as it is technically inaccurate, as we might
+never actually compile the given code; instead we say "ahead of time".
 
 #### Footnote 4
 
@@ -253,3 +274,9 @@ the function application containing this new constant, is itself constant, and s
 on.  But we should take care with where names are used; if an expression that a
 name is bound to is reduced to a constant, all the sites where that name is referenced
 should also be checked to see if those sites can now be reduced to constants.
+
+#### Footnote 6
+
+See, for example, the answers to the question
+[What are staged functions (conceptually)?](https://cs.stackexchange.com/questions/2869)
+on the Computer Science StackExchange.
