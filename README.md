@@ -13,10 +13,6 @@ conceptually simple, merely as a counter-example, in the hope that
 others might find it interesting (even if they don't necessarily
 agree with my opinion).
 
-Some prototype code can be found in [aot-eval.scm](aot-eval.scm) in this
-repo; but it's buggy and incomplete, so for now it's probably best
-to consider this to be just a write-up.
-
 Background
 ----------
 
@@ -43,14 +39,15 @@ consider a rule with a similarly operational character, which is:
 
 Since this is a kind of constant folding [[Footnote 2]](#footnote-2),
 we could follow the example of "proper tail recursion" and call this
-"proper constant folding"; however, that phrasing seems not quite fitting.
-The situation here is slightly more complex.  So instead, we will
+"proper constant folding"; however, that phrasing seems not quite fitting
+here, where the situation is slightly different.  So instead, we will
 call this _aggressive constant folding_. [[Footnote 3]](#footnote-3)
 
 In this article, I'd like to demonstrate that the combination of
-aggressive constant folding together with an `eval` facility provides an
-alternative to a macro system which is both conceptually simple and hygenic,
-and has a number of other assorted benefits.
+aggressive constant folding together with a reflective evaluation facility
+(conventionally called `eval`) provides an alternative to an explicit macro
+system which is both conceptually simple and hygienic, and has a number of
+other benefits.
 
 For the purpose of this demonstration, we will sketch a functional programming
 language with these two features.  For concreteness, consider it to be
@@ -59,7 +56,7 @@ fundamentally based on Scheme, but much simplified.
 Aggressive constant folding
 ---------------------------
 
-Let's begin by giving a somewhat more rigorous definition for
+Let's begin by giving a somewhat more rigorously defined procedure for
 what we've called aggressive constant folding.
 
 Literals such as `1` and `"Hello, world!"` are constants.
@@ -80,31 +77,24 @@ computed ahead of time, assuming the following things about f:
     returns a result after a finite time, for any choice of
     arguments passed to `f`.
 
-(_How_ we determine whether `f` is referentially transparent
-and always terminating is an altogether different matter.  There are several approaches
-that can be taken.  The language can be designed to only be capable
-of expressing such functions; the properties can be specified as part
-of a type system; we can use abstract interpretation to conservatively infer these
-properties; or we can simply assume that any function that is not
-referentially transparent and always terminating will be marked as such by the
-programmer and that any incorrect marking is a bug just like any other
-bug.  Because there are so many choices, and they are in a sense irrelevant
-to the main ideas here, examining any particular is outside the scope of this 
-article.  For our demonstrations, we'll simply assume all the functions we are
+(_How_ we determine whether `f` is referentially transparent and always
+terminating is an altogether different matter, but this is essentially
+irrelevant to the main point here. [[Footnote 4]](#footnote-4)
+For our demonstrations, we'll simply assume all the functions we are
 working with are both referentially transparent and always terminating.)
 
 There is a third constraint:
 
-*   All variables inside `f`, apart from the formal parameters
-    of `f` itself, are bound to constants.
+*   All names (apart from the formal parameters) used inside
+    the definition of `f` are bound to constants.
 
 Now, if `(f a1 a2 ... a2)` can be computed ahead of time, we do so,
 then replace it (either conceptually or concretely) with the
 constant value we obtained by doing so.
 
-Once replaced, we may then consider whether the function
-application containing this constant, is itself constant,
-and so on recursively up the syntax tree.
+Once replaced, we repeat this process, in the manner of a transitive
+closure algorithm, until we can find no more function applications
+that can be replaced by constants. [[Footnote 5]](#footnote-5)
 
 That is the basic idea.
 
@@ -112,17 +102,20 @@ That is the basic idea.
 
 There are a few more details we could mention:
 
-The property of being a constant is tracked in the scope
-of identifiers used in the program.  That is to say, given a name,
-we must know that that name is bound to a constant, in order to
-treat it as a constant.  If we do not know this, we should err on
-the side of safety and assume it does not refer to a constant.
+When analyzing an expression that contains a name, we must
+have some way of knowing if that name is bound to a constant,
+in order to determine if the expression is constant.  Typically
+some kind of environment structure mapping names to their
+values (if constant) or a distinguished "unknown" value (if not
+known to be constant) would be maintained during analysis.
+If a name is associated with "unknown", we must err on
+the side of safety and assume it does not represent a constant.
 
-The property of being constant can, and thus should, apply to some
-common language constructs that aren't functions, especially the
-more basic onces.  For example, in an `(if x t f)` expression,
-`x` may be a constant; if `x` is a "truthy" constant then the
-entire expression reduces to `t`, otherwise it reduces to `f`.
+The propagation of constanthood will typically occur in some
+language constructs that aren't function applications, as well.
+For example, in an `(if x t f)` expression, `x` may be a constant;
+if `x` is a "truthy" constant then the entire expression reduces
+to `t`, otherwise it reduces to `f`.
 
 `quote` and `eval`
 ------------------
@@ -134,9 +127,9 @@ feature as values in the semantics of programs in the language.
 
 For concreteness we will call such values "phrases".
 
-The conventional way to cast phrases in a language which we've already
-said is similar to Scheme, is to say that phrases are list structures
-containing sublists and atoms, and have a `quote` construct which
+We've already stated our language here is similar to Scheme, and
+the standard way to treat phrases in Scheme is as list structures
+containing sublists and atoms, and to have a `quote` construct which
 introduces literal phrases as expressions.
 
 We note that a `quote` form is a constant.
@@ -148,8 +141,9 @@ this is very similar to Schemes's `eval`; the main difference
 is that we shall have a slightly more nuanced idea of
 "environment" (see below).
 
-We note also that `eval` is a constant.  So, by the rules of
-aggressive constant folding,
+We note also that `eval` is a constant.  An application of `eval`
+is not essentially different from any other function application,
+so by the rules of aggressive constant folding,
 
     (eval (quote (* 2 2)) std-env)
 
@@ -163,8 +157,8 @@ Macros
 
 Given all of the above, a macro is nothing more than a function that happens to
 have been given constants as its actual parameters.  It will be
-reduced to a constant ahead of time, which coincides perfectly
-with the commonplace idea of what a macro is supposed to do.
+reduced to a constant ahead of time, which matches perfectly
+the commonplace idea of what a macro is supposed to do.
 
 Such "macros" also happen to "gracefully degrade" back into functions;
 if not all actual parameters are constants, the function will not be applied
@@ -177,7 +171,7 @@ it; we have a strong guarantee that this will all have been accounted for
 ahead of time and will not appear in the code or impose any cost at runtime.
 
 Many languages have more sophisticated macro systems, though, in terms of syntax,
-where macros need not "look like" functions; they permit alternate syntax to be
+where macros need not look much like functions; they permit alternate syntax to be
 employed when the macro is applied.  We can simulate that to a great degree
 here using `quote`, to pass a phrase to the function.  The function then
 calls `eval` on it.  Before doing so, it can transform the phrase in any way it
@@ -241,3 +235,21 @@ rather than as a language specification rule as we're doing here.
 
 We also avoid the phrase "compile-time" as is technically inaccurate, as we might never actually
 compile the given code; instead we say "ahead of time".
+
+#### Footnote 4
+
+There are several approaches that can be taken.  The language can be designed to only
+be capable of expressing such functions; the properties can be specified as part
+of a type system; we can use abstract interpretation to conservatively infer these
+properties; or we can simply assume that any function that is not
+referentially transparent and always terminating will be marked as such by the
+programmer and that any incorrect marking is a bug just like any other bug.
+
+#### Footnote 5
+
+In most languages we ought to be able to proceed, for the most part, in a bottom-up
+fashion: when we have reduced a function application to a constant, consider whether
+the function application containing this new constant, is itself constant, and so
+on.  But we should take care with where names are used; if an expression that a
+name is bound to is reduced to a constant, all the sites where that name is referenced
+should also be checked to see if those sites can now be reduced to constants.
