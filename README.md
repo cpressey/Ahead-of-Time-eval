@@ -106,8 +106,6 @@ that can be replaced by constants. [[Footnote 5]](#footnote-5)
 
 That is the basic idea.
 
-**TODO: there should really be a good example or two here.**
-
 There are a few more details we could mention:
 
 When analyzing an expression that contains a name, we must
@@ -200,9 +198,32 @@ It also makes it possible to strategically subvert hygiene, either by manipulati
 the environment that is passed in so that it no longer resembles the "standard" one,
 or by manipulating the phrase and replacing referents with other values.
 
-**TODO: there should be some more words on the subject of hygiene here.**
+Now, the statements in the above few paragraphs aren't untrue, but they're perhaps
+somewhat underwhelming.  To get into why that is though, I think we need
+to examine the assumptions more closely.  What makes a macro "hygienic" anyway?
 
-**TODO: there should really be more examples here.**
+I would submit that a programmer perceives a macro as _un_-hygienic when
+the names used in the macro become bind to values that they did not
+expect them to become bind to, almost always resulting an unpleasant surprise.
+
+In other words, hygiene is relative to the programmer's expectations, and the
+particular expectations are set up by what the particular programming language
+provides in regards to scope and binding.
+
+This becomes even more pervasive when you consider that advanced macros can
+implement _their own_ rules for scope and bindings.  Thus setting up
+hygiene expectations of their own, over and above what the programming language
+itself sets up.
+
+So it would seem that there is really no escaping the relativity of hygiene.
+
+In the most general case, what macro authors need is control over the bindings
+used in the evaluation of the body of a macro, and tools to examine the bindings
+in effect at the points in the program where the macro is used.
+
+At the moment I'm considering such tools to be out of scope of this write-up,
+as the possibilities are vast and they don't really affect the core idea of
+Ahead-of-Time `eval` one way or the other.
 
 ### "But `eval` is evil!"
 
