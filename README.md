@@ -13,6 +13,10 @@ conceptually simple, merely as a counter-example, in the hope that
 others might find it interesting (even if they don't necessarily
 agree with my opinion).
 
+This is only a write-up.  I'm currently working elsewhere on a toy
+language implementation that implements this system.  I'll link to it
+here when it's functional.
+
 Background
 ----------
 
@@ -199,6 +203,15 @@ or by manipulating the phrase and replacing referents with other values.
 **TODO: there should be some more words on the subject of hygiene here.**
 
 **TODO: there should really be more examples here.**
+
+### "But `eval` is evil!"
+
+The reputation `eval` has in some circles is not a positive one, and this reputation
+is not wholly undeserved.  But this reputation is attached to using `eval` _at runtime_.
+The core ideas of Ahead-of-Time-`eval` only necessitate using `eval` _ahead of time_.
+It would in fact be quite possible to couple it with _forbidding_ runtime `eval`:
+immediately after the aggressive constant folding pass, look for any remaining instances
+of `eval` in the program, and raise an error if there are any.
 
 Related Work
 ------------
