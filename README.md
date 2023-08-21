@@ -6,16 +6,16 @@ Ahead-of-Time `eval`
 Motivation
 ----------
 
-I'm writing this because basically every hygienic macro system I've
-ever seen has struck me as _ad hoc_ and convoluted (just my opinion,
-of course) and I wanted to present one that is coherent and
-conceptually simple, merely as a counter-example, in the hope that
-others might find it interesting (even if they don't necessarily
-agree with my opinion).
+I started writing this because it seemed to me that I'd never
+encountered a macro system billing itself as "hygienic" that wasn't
+_ad hoc_ and convoluted in some way (just my opinion, of course!)
+and I wanted to present one that that had the explicit aim of being
+coherent and conceptually simple — merely as a counter-example, a
+testament that it wasn't impossible to have such a design.
 
-This is only a write-up.  I'm currently working elsewhere on a toy
-language implementation that implements this system.  I'll link to it
-here when it's functional.
+This is a write-up only, and contains no code.  If you prefer to
+see code, many of the ideas in this article are implemented in
+the toy language Durito.
 
 Background
 ----------
@@ -43,8 +43,8 @@ consider a rule with a similarly operational character, which is:
 
 Since this is a kind of constant folding [[Footnote 2]](#footnote-2),
 we could follow the example of "proper tail recursion" and call this
-"proper constant folding"; however, that phrasing seems not quite fitting
-in the current situation.  So instead, we will
+"proper constant folding"; however, that phrasing isn't quite a
+fitting one here for a number of reasons, so instead, we will
 call this _aggressive constant folding_. [[Footnote 3]](#footnote-3)
 
 In this article, I'd like to demonstrate that the combination of
@@ -55,18 +55,16 @@ other benefits.
 
 For the purpose of this demonstration, we will sketch a functional programming
 language with these two features.  For concreteness, consider it to be
-fundamentally based on Scheme, but much simplified.
+fundamentally based on Scheme, but much simpler.
 
 Aggressive constant folding
 ---------------------------
 
-Let's begin by giving a somewhat more rigorously defined procedure for
-what we've called aggressive constant folding.
+Let's begin by defining "aggressive constant folding" more rigorously.
 
 Literals such as `1` and `"Hello, world!"` are constants.
 A literal function, that is, a lambda expression
 such as `(lambda (x) (* x x))`, is also a constant.
-
 Built-in functions, such as the function represented by `*`,
 are also constants.
 
@@ -74,18 +72,18 @@ If `f` is a constant function and `a1`, `a2`, ... `an` are constants,
 then the function application `(f a1 a2 ... an)` can be
 computed ahead of time, assuming the following things about f:
 
-*   `f` is _referentially transparent_, i.e. evaluating `f`
-    depends only on the arguments passed to it, and does
-    not cause any side-effects; and
+*   `f` is _referentially transparent_, i.e. the result of
+    evaluating `f` depends only the values of `a1`, `a2`, ... `an`,
+    and this evaluation does not cause any side-effects; and
 *   `f` is _always terminating_, i.e. evaluating `f` always
     returns a result after a finite time, for any choice of
     arguments passed to `f`.
 
-(_How_ we determine whether `f` is referentially transparent and always
-terminating is an altogether different matter, but it is essentially
-irrelevant to the main point here [[Footnote 4]](#footnote-4).
+Now, _how_ we determine whether `f` is referentially transparent and always
+terminating is an altogether different matter; but it is one that is orthogonal
+to the main point of this article [[Footnote 4]](#footnote-4).
 For our demonstrations, we'll simply assume that all the functions we're
-working with are both referentially transparent and always terminating.)
+working with are both referentially transparent and always terminating.
 
 There is a third constraint:
 
@@ -108,8 +106,8 @@ That is the basic idea.
 
 There are a few more details we could mention:
 
-When analyzing an expression that contains a name, we must
-have some way of knowing if that name is bound to a constant,
+When analyzing an expression that contains a name, we must have some
+way of telling if we know that it is bound to a constant or not,
 in order to determine if the expression is constant.  Typically
 some kind of environment structure mapping names to values
 would be maintained during analysis.  When a name is discovered
@@ -131,60 +129,98 @@ will need an `eval` facility, and in order to employ that facility
 in a reasonable way, it will need a way to represent program texts
 as expressible values in the language.
 
-For concreteness we will call such values "phrases".
+For concreteness we will call such values "quoted forms".
 
 We've already stated our language here is similar to Scheme, and
-the standard way to represent phrases in Scheme is as list structures
-containing sublists and atoms, and to have a `quote` construct which
-introduces literal phrases as expressions.
+the standard way to represent quoted forms in Scheme is as lists
+(containing sublists and atoms), using the `quote` construct
+to include literal (and thus constant) quoted forms in expressions.
 
-Note that the `quote` form introduces a constant.  (Even in languages
-where phrases are represented in a different fashion, there will
-presumably be ways to produce a constant phrase.)
-
-Meanwhile, `eval` is a built-in function that takes a phrase and
-an environment, and evaluates to the value that
-that phrase would evaluate to in that environment.  Again,
+Meanwhile, `eval` is a built-in function that takes a quoted form
+and an environment, and evaluates to the value that that form,
+were it unquoted, would evaluate to in that environment.  Again,
 this is very similar to Schemes's `eval`; the main difference
-is that we shall have a slightly more nuanced idea of
+is that we use a slightly more nuanced conception of
 "environment" (see below).
 
-We note also that `eval` is a constant.  An application of `eval`
-is not essentially different from any other function application,
-so by the rules of aggressive constant folding,
+We note also that `eval`, being a built-in function, is a constant.
+An application of `eval` is not essentially different from any other
+function application, so, for example, by the rules of aggressive
+constant folding,
 
     (eval (quote (* 2 2)) std-env)
 
-is a constant (the constant value `4`), under the assumption that
-`std-env` is a value representing an environment (presumably
-the "standard" environment) in which the symbol `*` is
-bound to a suitable integer multiplication function.
+is a constant (the constant value `4`) — under the assumption
+that `std-env` is a value representing an environment (presumably
+the "standard" environment) in which the symbol `*` is bound to a suitable
+integer multiplication function.
 
 Macros
 ------
 
-Given all of the above, a macro is nothing more than a referentially
-transparent, always-terminating function that happens to
-have been given constants as its actual parameters.  It will be
-reduced to a constant ahead of time, which matches perfectly
-the commonplace idea of what a macro is supposed to do.
+Before launching into how all this relates to hygienic macros,
+it might be good to have an overview of the common use cases of macros.
+
+I submit that there are three major purposes for which macros are used:
+_circumspection_, _optimization_, and _ergonomics_.
+
+**Circumspection** — which we would call "conditional compilation" if
+we were restricting ourselves to compilers, which we're not — means
+omitting code that we don't strictly need, in the version of the
+program that executes.  So for example, if our agreement with some
+customer does not include some advanced feature, we leave out that
+feature in the build we supply to that customer; or, if we build a
+program without debugging, we leave out the debug logging function
+and all the calls to it too.
+
+Aggressive constant folding by itself gives us circumspection
+"for free".  Instead of `#ifdef DEBUG`, for instance, we simply define
+`debug` as a function that returns a constant and use plain `if` tests on
+it; we have a strong guarantee that this will all have been accounted for
+ahead of time and will not appear in the code or impose any cost at runtime.
+
+**Optimization**, where it is not already accomplished by circumspection
+(less stuff in program = less work to do), usually consists of arranging
+instructions in a particular way so that their pattern of execution is
+closer to optimal.  For example, array striping, and loop unrolling are
+two optimizations to achieve better cache behaviour when executing vector
+or matrix based code, which can be implemented with macros.
+
+However, as ahead-of-time `eval` as we've described it so far has already
+stipulated that the functions involved will be referentially transparent.
+And much of the point of doing side-effect-free functional programming
+is to program at a more abstract level to allow the compiler to be able
+to select and make these kinds of optimizations itself, rather than
+leaving it up to the programmer to address these with macros.
+
+So I'm happy to concede that it's not really suited to writing
+macros for optimization tasks, and won't worry too much about it.
+
+It's **ergonomics** where ahead-of-time `eval` can really focus.  An
+ergonomic macro is one designed to improve the usability of the
+language itself in some way; for example, defining a `case` statement
+in a language that only supports `if` statements, by translating
+the `case` to a sequence of `if`s.
+
+In this setting, a macro is nothing more than a function that
+takes syntax to syntax.  Given some syntax as input, it reduces that
+to a (presumably different) syntactic form, before program execution
+begins.
+
+Since quotes forms represent syntax, this matches exactly what
+ahead-of-time `eval` will do on referentially-transparent,
+always-terminating functions that take constant quoted forms.
 
 Such "macros" also happen to "gracefully degrade" back into functions;
 if not all actual parameters are constants, the function will not be applied
 until the values of the non-constant parameters are known, i.e. at runtime.
 
-In fact, aggressive constant folding by itself deprecates many use cases
-for macros.  Instead of `#ifdef DEBUG`, for instance, we can simply define
-`debug` as a function that returns a constant and use plain `if` tests on
-it; we have a strong guarantee that this will all have been accounted for
-ahead of time and will not appear in the code or impose any cost at runtime.
-
 Many languages have more sophisticated macro systems, though, in terms of syntax,
 where macros need not look much like functions; they permit alternate syntax to be
 employed when the macro is applied.  We can simulate that to a great degree
-here using `quote`, to pass a phrase to the function.  The function then
-calls `eval` on it.  Before doing so, it can transform the phrase in any way it
-sees fit, since the phrase is simply a data structure.  The transformation,
+here using `quote`, to pass a quoted form to the function.  The function then
+calls `eval` on it.  Before doing so, it can transform the quoted form in any way it
+sees fit, since the quoted form is simply a data structure.  The transformation,
 and the `eval`, both happen ahead of time, so long as they only involve other
 pieces of information known ahead of time (i.e. constants.)
 
@@ -196,7 +232,7 @@ impossible to capture a program binding during the evaluation of `eval`.
 
 It also makes it possible to strategically subvert hygiene, either by manipulating
 the environment that is passed in so that it no longer resembles the "standard" one,
-or by manipulating the phrase and replacing referents with other values.
+or by manipulating the quoted form and replacing referents with other values.
 
 Now, the statements in the above few paragraphs aren't untrue, but they're perhaps
 somewhat underwhelming.  To get into why that is though, I think we need
@@ -295,7 +331,7 @@ never actually compile the given code; instead we say "ahead of time".
 
 There are several approaches that can be taken.  The language can be designed to only
 be capable of expressing such functions; the properties can be specified as part
-of a type system; we can use abstract interpretation to conservatively infer these
+of a type system; we can use static analysis to conservatively infer these
 properties; or we can simply assume that any function that is not
 referentially transparent and always terminating will be marked as such by the
 programmer and that any incorrect marking is a bug just like any other bug.
