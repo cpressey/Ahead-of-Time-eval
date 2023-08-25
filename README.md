@@ -230,25 +230,48 @@ to syntax, produce as its output syntax which represents another
 function — one with arguments.  And it is those arguments that are
 the runtime arguments of the macro.
 
+### Example of Ergonomic Macro
+
 As an example, if we were to try to define a Perl-like `unless` form
 in our putative Scheme-like language, we might have
 
     (define unless (qa qb)
-      (let* ((form1     '(lambda (x) (if (not x) $1 $2)))
-             (form2     (replace '$1 qa form1))
-             (form3     (replace '$2 qb form2)))
-        (eval form3 std-env))
+      (eval
+        `(lambda (x) (if (not x) ,$1 ,$2))
+        std-env))
 
-(Here the function `replace` replaces all occurences of a
-given symbol in a quoted form, with a given value.  I'm using it
-instead of quasiquoting because I find quasiquoting distasteful.)
+(Here we are using quasiquoting for succinctness.)  This macro would
+be applied like so:
 
-This macro would be applied like so:
+    ((unless '(do-one-thing 123) '(do-something-else 456)) (> c 0))
 
-    ((unless '(do-one-thing x) '(do-something-else y)) (> a 0))
+This simple version only works if we are content to have our true
+and false branches be computable ahead-of-time, which probably isn't
+practical.  If we want them to have components that aren't known
+until runtime, we need to treat them as functions too.  Something
+like
+
+    (define branch (q)
+      (eval
+        `(lambda (x) ,q)))
+
+And then the usage would be something like
+
+    (let* ((a something-known-only-at-runtime) (b something-else))
+      ((unless
+        ((branch '(do-one-thing x)) a)
+        ((branch '(do-something-else x)) b))
+        (> c 0)))
+
+The `branch` macro reduces to a function that takes a
+single formal argument `x`, and those functions are passed
+to `unless`, which "unquotes" these functions and itself
+reduces to a function that takes a single formal argument `x`;
+but the `x`s in the branches shadow this one.
 
 There is of course nothing stopping a language from supporting
-language constructs to make macro definition and usage less awkward.
+language constructs to hide much of this complexity in the name
+of making macro definition and usage less awkward.
 
 ### Hygiene
 
@@ -265,12 +288,15 @@ manipulating the environment that is passed in so that it no longer resembles
 the "standard" one, or by manipulating the quoted form and replacing referents
 with other values.
 
-Runtime values for ergonomic macros, meanwhile, are passed in as arguments to
-formed functions.  There appears to be an extra measure of "hygiene defense"
-in doing it this way:  If a function does refer to bindings that aren't known
-ahead-of-time, it won't be computed ahead-of-time itself.  (If the language
-supports some way of annotating what is expected to be computed ahead-of-time,
-it could, for example, warn the user in this case.)
+(Runtime values for ergonomic macros, meanwhile, are passed in as arguments to
+formed functions.  There appear to be extra measures of "hygiene
+defense" in doing it this way: in the definition of the the names of these
+arguments will shadow any enclosing binding, instead of re-using it; and
+if a function does refer to bindings that aren't known ahead-of-time, it won't
+be computed ahead-of-time itself.  If the language supports some way of
+annotating what is expected to be computed ahead-of-time, it could, e.g.,
+warn the user in this case.  But these measures are perhaps minor in the
+scheme of things.)
 
 Now, the statements in the above few paragraphs aren't untrue, but they're
 perhaps somewhat underwhelming.  To get into why that is though, I think we
