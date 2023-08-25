@@ -233,14 +233,14 @@ The resolution to this is to have the function that takes syntax
 to syntax, produce as its output a function which takes arguments.
 And it is those arguments that are the runtime arguments of the macro.
 
-#### Example of Ergonomic Macro
+### Example of Ergonomic Macro
 
 As an example, if we were to try to define a Perl-like `unless` form
 in our putative Scheme-like language, we might have
 
     (define unless (qa qb)
       (eval
-        `(lambda (x) (if (not x) ,$1 ,$2))
+        `(lambda (x) (if (not x) ,qa ,qb))
         std-env))
 
 (Here we are using quasiquoting for succinctness.)  This macro would
@@ -250,31 +250,34 @@ be applied like so:
 
 This simple version only works if we are content to have our true
 and false branches be computable ahead-of-time, which probably isn't
-practical.  If we want them to have components that aren't known
-until runtime, we need to treat them as functions too.  Something
-like
+very useful in practuice.  If we want them to have components that
+aren't known until runtime, we need to treat them as functions, too.
 
-    (define branch (q)
+A better definition might be
+
+    (define unless ()
       (eval
-        `(lambda (x) ,q)))
+        `(lambda (x fa fb) (if (not x) (fa) (fb)))
+        std-env))
 
 And then the usage would be something like
 
-    (let* ((a something-known-only-at-runtime) (b something-else))
-      ((unless
-        ((branch '(do-one-thing x)) a)
-        ((branch '(do-something-else x)) b))
-        (> c 0)))
+    ((unless) (> c 0)
+      (lambda () (do-one-thing x))
+      (lambda () (do-some-other-thing y)))
 
-The `branch` macro reduces to a function that takes a
-single formal argument `x`, and those functions are passed
-to `unless`, which "unquotes" these functions and itself
-reduces to a function that takes a single formal argument `x`;
-but the `x`s in the branches shadow this one.
+where `x` and `y` aren't known until runtime.
 
 There is of course nothing stopping a language from supporting
-language constructs to hide much of this complexity in the name
-of making macro definition and usage less awkward.
+language constructs to hide some of this complexity in the name
+of making macro definition and usage less awkward.  But we need to
+reveal in here in order to show how the mechanism works.
+
+There is also a real possiblity that `unless` is too simple an example
+to demonstrate this well.  The only thing being computed ahead of time
+is the function that applies `not` to the test, which you could just
+as easily write as a plain function.  Again, the purpose here is
+solely to illustrate how the mechanism works.
 
 ### Hygiene
 
