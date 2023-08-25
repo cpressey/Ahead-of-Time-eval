@@ -7,15 +7,15 @@ Motivation
 ----------
 
 I started writing this because it seemed to me that I had never
-seen a hygienic macro system with a design that wasn't _ad hoc_ and
+seen a hygienic macro system that wasn't _ad hoc_ and
 convoluted in some way (just my opinion, of course!) and I wanted to
-present one that — I can only hope — is coherent and conceptually
+present one that is — I can only hope — coherent and conceptually
 simple instead, as a sort of counter-example: a testament to the
 fact that it isn't impossible to have such a design.
 
 This is a write-up only, and contains no code.  If you prefer to
 see code, many of the ideas in this article are implemented in
-the toy language Durito.
+the toy language [Durito][].
 
 Background
 ----------
@@ -43,19 +43,19 @@ consider a rule with a similarly operational character, which is:
 
 Since this is a kind of constant folding [[Footnote 2]](#footnote-2),
 we could follow the example of "proper tail recursion" and call this
-"proper constant folding"; however, that phrasing isn't quite a
-fitting one here for a number of reasons, so instead, we will
-call this _aggressive constant folding_. [[Footnote 3]](#footnote-3)
+"proper constant folding"; however, that phrasing doesn't quite fit
+here for a number of reasons, so instead, we will
+call this _aggressive constant folding_ [[Footnote 3]](#footnote-3).
 
 In this article, I'd like to demonstrate that the combination of
 aggressive constant folding together with a reflective evaluation facility
-(conventionally called `eval`) provides an alternative to an explicit macro
+(conventionally called `eval`) provides an alternative to a dedicated macro
 system which is both conceptually simple and hygienic, and has a number of
 other benefits.
 
-For the purpose of this demonstration, we will sketch a functional programming
-language with these two features.  For concreteness, consider it to be
-fundamentally based on Scheme, but much simpler.
+For the purpose of this demonstration, we'll assume we have a
+functional programming language, based on Scheme but presumably much simpler,
+that has these two features, and we'll write our example code snippets in it.
 
 Aggressive constant folding
 ---------------------------
@@ -87,12 +87,12 @@ working with are both referentially transparent and always terminating.
 
 There is a third constraint:
 
-*   All names (apart from the formal parameters) used inside
-    the definition of `f` are bound to constants.
+*   All names used inside the definition of `f`, apart from the formal
+    arguments of `f`, are bound to constants.
 
 This third constraint is particularly relevant if `f` uses names
-that are defined in an outer scope, for example the formal variables
-of a function inside which `f` is defined.
+that are defined in an outer scope, for example the formal arguments
+of the function inside which `f` is defined.
 
 Now, if `(f a1 a2 ... a2)` can be computed ahead of time, we do so,
 then replace it (either conceptually or concretely) with the
@@ -100,7 +100,7 @@ constant value we obtained by doing so.
 
 Once replaced, we repeat this process, in the manner of a transitive
 closure algorithm, until we can find no more function applications
-that can be replaced by constants. [[Footnote 5]](#footnote-5)
+that can be replaced by constants [[Footnote 5]](#footnote-5).
 
 That is the basic idea.
 
@@ -132,9 +132,9 @@ as expressible values in the language.
 For concreteness we will call such values "quoted forms".
 
 We've already stated our language here is similar to Scheme, and
-the standard way to represent quoted forms in Scheme is as lists
-(containing sublists and atoms), using the `quote` construct
-to include literal (and thus constant) quoted forms in expressions.
+the standard way to represent quoted forms in Scheme is as list
+structures, using the `quote` construct to express literal
+(and thus constant) quoted forms in expressions.
 
 Meanwhile, `eval` is a built-in function that takes a quoted form
 and an environment, and evaluates to the value that that form,
@@ -143,7 +143,7 @@ this is very similar to Schemes's `eval`; the main difference
 is that we use a slightly more nuanced conception of
 "environment" (see below).
 
-We note also that `eval`, being a built-in function, is a constant.
+We note also that `eval`, being a built-in function, is itself a constant.
 An application of `eval` is not essentially different from any other
 function application, so, for example, by the rules of aggressive
 constant folding,
@@ -158,50 +158,54 @@ integer multiplication function.
 Macros
 ------
 
+### Kinds of Macros
+
 Before launching into how all this relates to hygienic macros,
 it might be good to have an overview of the common use cases of macros.
 
 I submit that there are three major purposes for which macros are used:
 _circumspection_, _optimization_, and _ergonomics_.
 
-**Circumspection** — which we would call "conditional compilation" if
+**Circumspection** — which we might call "conditional compilation" if
 we were restricting ourselves to compilers, which we're not — means
 omitting code that we don't strictly need, in the version of the
-program that executes.  So for example, if our agreement with some
-customer does not include some advanced feature, we leave out that
-feature in the build we supply to that customer; or, if we build a
-program without debugging, we leave out the debug logging function
-and all the calls to it too.
+program that executes.  So for example, if one of our customer agreements
+stipulates they do not have access to some special feature of our product,
+we leave out that feature in the build we supply to that customer
+[[Footnote 6]](#footnote-6).  Or, if we build a program without debugging,
+we leave out the debug logging function and all the calls to it too.
 
-Aggressive constant folding by itself gives us circumspection
+Happily, aggressive constant folding _by itself_ gives us circumspection
 "for free".  Instead of `#ifdef DEBUG`, for instance, we simply define
-`debug` as a function that returns a constant and use plain `if` tests on
-it; we have a strong guarantee that this will all have been accounted for
-ahead of time and will not appear in the code or impose any cost at runtime.
+`debug` as a function that returns a constant and use plain `if` tests on it;
+we have a strong guarantee that this will all have been accounted for ahead
+of time, and it will not appear in the code or impose any cost at runtime.
 
 **Optimization**, where it is not already accomplished by circumspection
 (less stuff in program = less work to do), usually consists of arranging
 instructions in a particular way so that their pattern of execution is
-closer to optimal.  For example, array striping, and loop unrolling are
-two optimizations to achieve better cache behaviour when executing vector
-or matrix based code, which can be implemented with macros.
+closer to optimal.  For example, array striding, vectorization, and loop
+unrolling are optimizations to achieve better cache- and processor-level
+behaviour when executing vector or matrix based code, and these can be
+implemented with macros.
 
-However, as ahead-of-time `eval` as we've described it so far has already
-stipulated that the functions involved will be referentially transparent.
-And much of the point of doing side-effect-free functional programming
-is to program at a more abstract level to allow the compiler to be able
-to select and make these kinds of optimizations itself, rather than
-leaving it up to the programmer to address these with macros.
+However, ahead-of-time `eval` as we've described it so far already
+requires that the functions involved are referentially transparent.
+And part of the point of doing side-effect-free functional programming
+is to raise the abstraction level of the program, to allow the compiler to
+be able to select and make these kinds of optimizations itself, rather than
+leaving it up to the programmer to address these with explicit handiwork.
 
-So I'm happy to concede that it's not really suited to writing
-macros for optimization tasks, and won't worry too much about it.
+So I'm happy to concede that ahead-of-time `eval` is not really suited to
+writing macros for optimization tasks, and won't worry too much about it.
 
 **Ergonomics** is where ahead-of-time `eval` can really focus.  An
 ergonomic macro is one designed to improve the usability of the
 language itself in some way; for example, defining a `case` statement
 in a language that only supports `if` statements, by translating
-the `case` to a sequence of `if`s.  Use of ergonomic macros taken to a
-serious level can even result in embedded domain-specific languages.
+the `case` to a sequence of `if`s.  This idea of improving the
+constructs of the language from within can be taken quite far, to
+the point of creating entire embedded domain-specific languages (EDSLs).
 
 In this setting, a macro is nothing more than _a function that_
 _takes syntax to syntax_.  Given some syntax as input, it reduces that
@@ -210,12 +214,12 @@ begins.
 
 Since quoted forms represent syntax, this matches exactly what
 ahead-of-time `eval` will do to referentially-transparent,
-always-terminating functions that are given constant quoted forms:
+always-terminating functions that are passed constant quoted forms:
 reduce them, ahead-of-time, to other constant quoted forms.
 
 Such "macros" also happen to "gracefully degrade" back into functions;
-if not all actual parameters are constants, the function will not be applied
-until the values of the non-constant parameters are known, i.e. at runtime.
+if not all actual arguments are constants, the function will not be applied
+until the values of the non-constant arguments are known, i.e. at runtime.
 
 There is a subtlety when using ahead-of-time `eval` to form an ergonomic
 macro, however.  (At least, I must assume it's a subtlety as it took me
@@ -226,11 +230,10 @@ above) are not known until runtime.  It would be a mistake to treat
 those arguments as things that we can compute ahead-of-time.
 
 The resolution to this is to have the function that takes syntax
-to syntax, produce as its output syntax which represents another
-function — one with arguments.  And it is those arguments that are
-the runtime arguments of the macro.
+to syntax, produce as its output a function which takes arguments.
+And it is those arguments that are the runtime arguments of the macro.
 
-### Example of Ergonomic Macro
+#### Example of Ergonomic Macro
 
 As an example, if we were to try to define a Perl-like `unless` form
 in our putative Scheme-like language, we might have
@@ -356,7 +359,7 @@ general concept, it must be; like partial evaluation, it is a kind of "precomput
 transformation", moving some computations to an earlier "stage".  On the other hand,
 this level of generality doesn't seem to be what most people mean when they use the
 term "staged computation".  Indeed, discussions of the concept seem to centre around
-compilation and generating executable code at runtime [[Footnote 6]](#footnote-6).
+compilation and generating executable code at runtime [[Footnote 7]](#footnote-7).
 But Ahead-of-Time `eval` happens ahead-of-time only, and need not involve compiling.
 
 Clearly it is also related to hygienic macros, but I refer back to my opinion at the
@@ -412,6 +415,14 @@ should also be checked to see if those sites can now be reduced to constants.
 
 #### Footnote 6
 
+We will ignore the fact that the notion of shipping builds directly to
+individual customers comes across as terribly antiquated in the modern,
+Cloud-polluted software delivery paradigm prevalent at the time of writing.
+
+#### Footnote 7
+
 See, for example, the answers to the question
 [What are staged functions (conceptually)?](https://cs.stackexchange.com/questions/2869)
 on the Computer Science StackExchange.
+
+[Durito]: https://github.com/cpressey/Durito
