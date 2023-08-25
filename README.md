@@ -189,10 +189,10 @@ unrolling are optimizations to achieve better cache- and processor-level
 behaviour when executing vector or matrix based code, and these can be
 implemented with macros.
 
-However, Ahead-of-Time `eval` as we've described it so far already
+However, Ahead-of-Time `eval` as we've described it
 requires that the functions involved are referentially transparent.
-And part of the point of doing side-effect-free functional programming
-is to raise the abstraction level of the program, to allow the compiler to
+And part of the point of raise the abstraction level of the program
+with "pure" functional programming like this, is to allow the compiler to
 be able to select and make these kinds of optimizations itself, rather than
 leaving it up to the programmer to address these with explicit handiwork.
 
@@ -223,15 +223,16 @@ until the values of the non-constant arguments are known, i.e. at runtime.
 
 There is a subtlety when using Ahead-of-Time `eval` to form an ergonomic
 macro, however.  (At least, I must assume it's a subtlety as it took me
-a while to figure it out).  Some of the arguments to the "macro", the
-syntax parts, are constant and translated ahead of time; while other
-arguments (such as the expression in the `case` statement example
+a while to figure it out; I wasn't clearly seperating circumscription
+macros from ergonomic macros in my head.)  Some of the arguments to the
+"macro", the syntax parts, are constant and translated ahead of time; while
+other arguments (such as the expression in the `case` statement example
 above) are not known until runtime.  It would be a mistake to treat
 those arguments as things that we can compute ahead of time.
 
-The resolution to this is to have the function that takes syntax
-to syntax, produce as its output a function which takes arguments.
-And it is those arguments that are the runtime arguments of the macro.
+The resolution to this is to have the function that takes syntax as
+input, produce as its output a function which takes arguments.
+It is those arguments that are the runtime arguments of the macro.
 
 ### Example of Ergonomic Macro
 
@@ -246,38 +247,47 @@ in our putative Scheme-like language, we might have
 (Here we are using quasiquoting for succinctness.)  This macro would
 be applied like so:
 
-    ((unless '(do-one-thing 123) '(do-something-else 456)) (> c 0))
+    ((unless '(do-one-thing 123) '(do-something-else 456)) (> c 0.5))
+
+The two argument to `unless` are syntax for the branches that are
+incorporated, ahead of time, into the `if` statement in the function.
+The `(> c 0)` expression is not evaluated until runtime, and the
+result of evaluating it is passed to the function.
 
 This simple version only works if we are content to have our true
 and false branches be computable ahead of time, which probably isn't
-very useful in practuice.  If we want them to have components that
+very useful in practice.  If we want them to have components that
 aren't known until runtime, we need to treat them as functions, too.
 
-A better definition might be
+`unless` is perhaps too simple to make a good demonstration of
+this, so let's fancy it up a tiny bit, even at the cost of it looking
+a bit contrived.  Let's make a macro called `if-greater` that selects
+the first branch if the test value is greater than a constant threshold,
+and the second branch otherwise.
 
-    (define unless ()
+    (define if-greater (threshold)
       (eval
-        `(lambda (x fa fb) (if (not x) (fa) (fb)))
+        `(lambda (x fa fb) (if (> x ,threshold) (fa) (fb)))
         std-env))
 
 And then the usage would be something like
 
-    ((unless) (> c 0)
-      (lambda () (do-one-thing x))
-      (lambda () (do-some-other-thing y)))
+    (let ((x something-known-only-at-runtime)
+          (y something-else-known-only-at-runtime))
+      ((if-greater 0.5) c
+        (lambda () (do-one-thing x))
+        (lambda () (do-some-other-thing y))))
 
 where `x` and `y` aren't known until runtime.
+
+Note that even though `x` was used in the definition of the
+macro, there is no danger mentioning `x` in the first branch;
+it has already been bound to `something-known-only-at-runtime`.
 
 There is of course nothing stopping a language from supporting
 language constructs to hide some of this complexity in the name
 of making macro definition and usage less awkward.  But we need to
-reveal in here in order to show how the mechanism works.
-
-There is also a real possibility that `unless` is too simple an example
-to demonstrate this well.  The only thing being computed ahead of time
-is the function that applies `not` to the test, which you could just
-as easily write as a plain function.  Again, the purpose here is
-solely to illustrate how the mechanism works.
+reveal it here in order to show how the mechanism works.
 
 ### Hygiene
 
@@ -297,13 +307,14 @@ with other values.
 Runtime values for ergonomic macros, meanwhile, are passed in as arguments to
 formed functions.  The formed function does have formal arguments, and the
 possibility of using a name that collides with the name of a formal argument
-does exist; but there appear to be mitigating factors when doing things this
-way.  Namely, the runtime values are always passed as arguments, and thus
+does still exist; but there appear to be mitigating factors when doing things
+this way.  Namely, the runtime values are always passed as arguments, and thus
 referred to by the formal name of the argument, which will shadow any pre-
 existing bindings for that name; and if a function does happen to refer to
 bindings that aren't known ahead of time, it won't be computed ahead of time
 itself.  So if the language supports some way of annotating what is expected
-to be computed ahead of time, it could, e.g., warn the user in this case.
+to be computed ahead of time, it could, e.g., warn the user that such a
+collision has occurred.
 
 Now, the statements in the above few paragraphs aren't untrue, but they're
 perhaps somewhat underwhelming.  To get into why that is though, I think we
@@ -326,28 +337,29 @@ itself sets up.
 So it would seem that there is really no escaping the relativity of hygiene.
 
 In the most general case, what macro authors need is control over the bindings
-used in the evaluation of the body of a macro, and tools to examine the bindings
-in effect at the points in the program where the macro is used.
-
-At the moment I'm considering such tools to be out of scope of this write-up,
-as the possibilities are vast and they don't really affect the core idea of
-Ahead-of-Time `eval` one way or the other.
+used in the evaluation of the body of a macro, and tools to examine the
+bindings in effect at the points in the program where the macro is used.  Such
+tools are out of scope of this write-up, as the possibilities are vast and
+they don't really affect the core idea of Ahead-of-Time `eval` one way or the
+other; but the other core need, control over the bindings during evaluation,
+has been granted.
 
 ### "But `eval` is evil!"
 
-The reputation `eval` has in some circles is not a positive one, and this reputation
-is not wholly undeserved.  But this reputation is attached to using `eval` _at runtime_.
-The core ideas of Ahead-of-Time `eval` only necessitate using `eval` _ahead of time_.
-It would in fact be quite possible to couple it with _forbidding_ runtime `eval`:
-immediately after the aggressive constant folding pass, look for any remaining instances
-of `eval` in the program, and raise an error if there are any.
+The reputation `eval` has in some circles is not a positive one, and this
+reputation is not wholly undeserved.  But this reputation is attached to using
+`eval` _at runtime_.  The core ideas of Ahead-of-Time `eval` only necessitate
+using `eval` _ahead of time_.  It would in fact be quite possible to couple it
+with _forbidding_ runtime `eval`: at some point after the aggressive constant
+folding pass, look for any remaining instances of `eval` in the program, and
+raise an error if any are found.
 
 Related Work
 ------------
 
 I have no idea how novel this is; the basic mechanism is so simple that I
 can hardly expect that no one has ever thought of it before; yet I haven't
-come across this arrangement of things before.
+come across this arrangement of things before either.
 
 Clearly it is related to constant folding; but constant folding is often
 considered only as a compiler optimization, and not something that is
@@ -367,18 +379,18 @@ to centre around compilation and generating executable code at runtime
 [[Footnote 7]](#footnote-7).  But Ahead-of-Time `eval` happens ahead of time
 only, and need not involve compiling.
 
-Clearly it is also related to hygienic macros, but I refer back to my opinion at the
-beginning of the article.  Hygienic macro systems almost always seem to start with
-conventional (unhygienic) macros and then patch them up so that they're hygienic.
-Ahead-of-Time `eval` seems to approach the entire problem from a different angle,
-obviating the very need for macros in some instances.
+Clearly it is also related to hygienic macros, but I refer back to my opinion
+at the beginning of the article.  Hygienic macro systems almost always seem
+to start with conventional (unhygienic) macros and then patch them up so that
+they're hygienic.  Ahead-of-Time `eval` seems to approach the entire problem
+from a different angle, obviating the very need for macros in some instances.
 
 It also seems to be related to evaluation techniques for functional languages,
 although my impression is that much of the existing work there is to support
 more performant ways of implementing lazy languages.  Ahead-of-Time `eval` can
 perform optimization in much the same way macros do, and in much the same
-way memoization does, by computing a result once and using it many
-times instead of recomputing it each time.  But, like macros, it not restricted
+way memoization does, by computing a result once and using it many times
+instead of recomputing it each time.  But, like macros, it is not restricted
 to memoization.
 
 - - - -
@@ -420,9 +432,9 @@ should also be checked to see if those sites can now be reduced to constants.
 
 #### Footnote 6
 
-We will ignore the fact that the notion of shipping builds directly to
-individual customers comes across as terribly antiquated in the modern,
-Cloud-polluted software delivery paradigm prevalent at the time of writing.
+Never mind how terribly antiquated delivering software directly to an individual
+customer sounds in this modern, Cloud-polluted world of ours.  Actually, it still
+does happen in some of the more arid corners of the industry.
 
 #### Footnote 7
 
