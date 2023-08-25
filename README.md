@@ -189,17 +189,17 @@ unrolling are optimizations to achieve better cache- and processor-level
 behaviour when executing vector or matrix based code, and these can be
 implemented with macros.
 
-However, ahead-of-time `eval` as we've described it so far already
+However, Ahead-of-Time `eval` as we've described it so far already
 requires that the functions involved are referentially transparent.
 And part of the point of doing side-effect-free functional programming
 is to raise the abstraction level of the program, to allow the compiler to
 be able to select and make these kinds of optimizations itself, rather than
 leaving it up to the programmer to address these with explicit handiwork.
 
-So I'm happy to concede that ahead-of-time `eval` is not really suited to
+So I'm happy to concede that Ahead-of-Time `eval` is not really suited to
 writing macros for optimization tasks, and won't worry too much about it.
 
-**Ergonomics** is where ahead-of-time `eval` can really focus.  An
+**Ergonomics** is where Ahead-of-Time `eval` can really focus.  An
 ergonomic macro is one designed to improve the usability of the
 language itself in some way; for example, defining a `case` statement
 in a language that only supports `if` statements, by translating
@@ -213,21 +213,21 @@ to a (presumably different) syntactic form, before program execution
 begins.
 
 Since quoted forms represent syntax, this matches exactly what
-ahead-of-time `eval` will do to referentially-transparent,
+Ahead-of-Time `eval` will do to referentially-transparent,
 always-terminating functions that are passed constant quoted forms:
-reduce them, ahead-of-time, to other constant quoted forms.
+reduce them, ahead of time, to other constant quoted forms.
 
 Such "macros" also happen to "gracefully degrade" back into functions;
 if not all actual arguments are constants, the function will not be applied
 until the values of the non-constant arguments are known, i.e. at runtime.
 
-There is a subtlety when using ahead-of-time `eval` to form an ergonomic
+There is a subtlety when using Ahead-of-Time `eval` to form an ergonomic
 macro, however.  (At least, I must assume it's a subtlety as it took me
 a while to figure it out).  Some of the arguments to the "macro", the
-syntax parts, are constant and translated ahead-of-time; while other
+syntax parts, are constant and translated ahead of time; while other
 arguments (such as the expression in the `case` statement example
 above) are not known until runtime.  It would be a mistake to treat
-those arguments as things that we can compute ahead-of-time.
+those arguments as things that we can compute ahead of time.
 
 The resolution to this is to have the function that takes syntax
 to syntax, produce as its output a function which takes arguments.
@@ -249,7 +249,7 @@ be applied like so:
     ((unless '(do-one-thing 123) '(do-something-else 456)) (> c 0))
 
 This simple version only works if we are content to have our true
-and false branches be computable ahead-of-time, which probably isn't
+and false branches be computable ahead of time, which probably isn't
 very useful in practuice.  If we want them to have components that
 aren't known until runtime, we need to treat them as functions, too.
 
@@ -273,7 +273,7 @@ language constructs to hide some of this complexity in the name
 of making macro definition and usage less awkward.  But we need to
 reveal in here in order to show how the mechanism works.
 
-There is also a real possiblity that `unless` is too simple an example
+There is also a real possibility that `unless` is too simple an example
 to demonstrate this well.  The only thing being computed ahead of time
 is the function that applies `not` to the test, which you could just
 as easily write as a plain function.  Again, the purpose here is
@@ -294,15 +294,16 @@ manipulating the environment that is passed in so that it no longer resembles
 the "standard" one, or by manipulating the quoted form and replacing referents
 with other values.
 
-(Runtime values for ergonomic macros, meanwhile, are passed in as arguments to
-formed functions.  There appear to be extra measures of "hygiene
-defense" in doing it this way: in the definition of the the names of these
-arguments will shadow any enclosing binding, instead of re-using it; and
-if a function does refer to bindings that aren't known ahead-of-time, it won't
-be computed ahead-of-time itself.  If the language supports some way of
-annotating what is expected to be computed ahead-of-time, it could, e.g.,
-warn the user in this case.  But these measures are perhaps minor in the
-scheme of things.)
+Runtime values for ergonomic macros, meanwhile, are passed in as arguments to
+formed functions.  The formed function does have formal arguments, and the
+possibility of using a name that collides with the name of a formal argument
+does exist; but there appear to be mitigating factors when doing things this
+way.  Namely, the runtime values are always passed as arguments, and thus
+referred to by the formal name of the argument, which will shadow any pre-
+existing bindings for that name; and if a function does happen to refer to
+bindings that aren't known ahead of time, it won't be computed ahead of time
+itself.  So if the language supports some way of annotating what is expected
+to be computed ahead of time, it could, e.g., warn the user in this case.
 
 Now, the statements in the above few paragraphs aren't untrue, but they're
 perhaps somewhat underwhelming.  To get into why that is though, I think we
@@ -317,8 +318,8 @@ In other words, hygiene is relative to the programmer's expectations, and the
 particular expectations are set up by what the particular programming language
 provides in regards to scope and binding.
 
-This becomes even more pervasive when you consider that advanced macros can
-implement _their own_ rules for scope and bindings.  Thus setting up
+This problem becomes even more pervasive when you consider that advanced macros
+can implement _their own_ rules for scope and bindings, thus setting up new
 hygiene expectations of their own, over and above what the programming language
 itself sets up.
 
@@ -336,7 +337,7 @@ Ahead-of-Time `eval` one way or the other.
 
 The reputation `eval` has in some circles is not a positive one, and this reputation
 is not wholly undeserved.  But this reputation is attached to using `eval` _at runtime_.
-The core ideas of Ahead-of-Time-`eval` only necessitate using `eval` _ahead of time_.
+The core ideas of Ahead-of-Time `eval` only necessitate using `eval` _ahead of time_.
 It would in fact be quite possible to couple it with _forbidding_ runtime `eval`:
 immediately after the aggressive constant folding pass, look for any remaining instances
 of `eval` in the program, and raise an error if there are any.
@@ -344,26 +345,27 @@ of `eval` in the program, and raise an error if there are any.
 Related Work
 ------------
 
-I have no idea how novel this is; it's so simple that I hardly expect that no one
-has ever thought of it before; yet I haven't come across this arrangement of things
-before.
+I have no idea how novel this is; the basic mechanism is so simple that I
+can hardly expect that no one has ever thought of it before; yet I haven't
+come across this arrangement of things before.
 
-Clearly it is related to constant folding; but constant folding is often considered
-only as a compiler optimization, and not something that is specified by the language.
+Clearly it is related to constant folding; but constant folding is often
+considered only as a compiler optimization, and not something that is
+specified by the language.
 
-Clearly it is also related to partial evaluation; but partial evaluation usually
-goes much further.  Partial evaluation generally aims at statically generating a
-new function when *any* of its arguments are constant; while aggressive constant
-folding only reduces the function to a constant when *all* of its arguments are
-constant.
+Clearly it is also related to partial evaluation; but partial evaluation
+usually goes much further.  Partial evaluation generally aims at statically
+generating a new function when *any* of its arguments are constant; while
+aggressive constant folding only reduces the function to a constant when *all*
+of its arguments are constant.
 
-Is it related to staged computation?  Insofar as staged computation is a very
-general concept, it must be; like partial evaluation, it is a kind of "precomputation
-transformation", moving some computations to an earlier "stage".  On the other hand,
-this level of generality doesn't seem to be what most people mean when they use the
-term "staged computation".  Indeed, discussions of the concept seem to centre around
-compilation and generating executable code at runtime [[Footnote 7]](#footnote-7).
-But Ahead-of-Time `eval` happens ahead-of-time only, and need not involve compiling.
+Clearly it is also related to staged computation.  It is a kind of strategy
+for computation that moves as much computation as it can to an earlier
+"precomputation" stage.  However, this does not seem to be the concern that
+staged computation usually aims to address; discussions of the concept seem
+to centre around compilation and generating executable code at runtime
+[[Footnote 7]](#footnote-7).  But Ahead-of-Time `eval` happens ahead of time
+only, and need not involve compiling.
 
 Clearly it is also related to hygienic macros, but I refer back to my opinion at the
 beginning of the article.  Hygienic macro systems almost always seem to start with
@@ -373,7 +375,7 @@ obviating the very need for macros in some instances.
 
 It also seems to be related to evaluation techniques for functional languages,
 although my impression is that much of the existing work there is to support
-more performant ways of implementing lazy languages.  Ahead-of-Time eval can
+more performant ways of implementing lazy languages.  Ahead-of-Time `eval` can
 perform optimization in much the same way macros do, and in much the same
 way memoization does, by computing a result once and using it many
 times instead of recomputing it each time.  But, like macros, it not restricted
