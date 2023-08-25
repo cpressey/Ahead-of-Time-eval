@@ -6,12 +6,12 @@ Ahead-of-Time `eval`
 Motivation
 ----------
 
-I started writing this because it seemed to me that I'd never
-encountered a macro system billing itself as "hygienic" that wasn't
-_ad hoc_ and convoluted in some way (just my opinion, of course!)
-and I wanted to present one that that had the explicit aim of being
-coherent and conceptually simple — merely as a counter-example, a
-testament that it wasn't impossible to have such a design.
+I started writing this because it seemed to me that I had never
+seen a hygienic macro system with a design that wasn't _ad hoc_ and
+convoluted in some way (just my opinion, of course!) and I wanted to
+present one that — I can only hope — is coherent and conceptually
+simple instead, as a sort of counter-example: a testament to the
+fact that it isn't impossible to have such a design.
 
 This is a write-up only, and contains no code.  If you prefer to
 see code, many of the ideas in this article are implemented in
@@ -196,47 +196,86 @@ leaving it up to the programmer to address these with macros.
 So I'm happy to concede that it's not really suited to writing
 macros for optimization tasks, and won't worry too much about it.
 
-It's **ergonomics** where ahead-of-time `eval` can really focus.  An
+**Ergonomics** is where ahead-of-time `eval` can really focus.  An
 ergonomic macro is one designed to improve the usability of the
 language itself in some way; for example, defining a `case` statement
 in a language that only supports `if` statements, by translating
-the `case` to a sequence of `if`s.
+the `case` to a sequence of `if`s.  Use of ergonomic macros taken to a
+serious level can even result in embedded domain-specific languages.
 
-In this setting, a macro is nothing more than a function that
-takes syntax to syntax.  Given some syntax as input, it reduces that
+In this setting, a macro is nothing more than _a function that_
+_takes syntax to syntax_.  Given some syntax as input, it reduces that
 to a (presumably different) syntactic form, before program execution
 begins.
 
-Since quotes forms represent syntax, this matches exactly what
-ahead-of-time `eval` will do on referentially-transparent,
-always-terminating functions that take constant quoted forms.
+Since quoted forms represent syntax, this matches exactly what
+ahead-of-time `eval` will do to referentially-transparent,
+always-terminating functions that are given constant quoted forms:
+reduce them, ahead-of-time, to other constant quoted forms.
 
 Such "macros" also happen to "gracefully degrade" back into functions;
 if not all actual parameters are constants, the function will not be applied
 until the values of the non-constant parameters are known, i.e. at runtime.
 
-Many languages have more sophisticated macro systems, though, in terms of syntax,
-where macros need not look much like functions; they permit alternate syntax to be
-employed when the macro is applied.  We can simulate that to a great degree
-here using `quote`, to pass a quoted form to the function.  The function then
-calls `eval` on it.  Before doing so, it can transform the quoted form in any way it
-sees fit, since the quoted form is simply a data structure.  The transformation,
-and the `eval`, both happen ahead of time, so long as they only involve other
-pieces of information known ahead of time (i.e. constants.)
+There is a subtlety when using ahead-of-time `eval` to form an ergonomic
+macro, however.  (At least, I must assume it's a subtlety as it took me
+a while to figure it out).  Some of the arguments to the "macro", the
+syntax parts, are constant and translated ahead-of-time; while other
+arguments (such as the expression in the `case` statement example
+above) are not known until runtime.  It would be a mistake to treat
+those arguments as things that we can compute ahead-of-time.
 
-Such manipulation is naturally hygienic.  This is because the environment passed
-to `eval` is explicitly given, and only the bindings in that environment will be
-used during the evaluation of `eval`.  Supplying only a standard environment,
-which does not contain any bindings specific to the active program, makes it
-impossible to capture a program binding during the evaluation of `eval`.
+The resolution to this is to have the function that takes syntax
+to syntax, produce as its output syntax which represents another
+function — one with arguments.  And it is those arguments that are
+the runtime arguments of the macro.
 
-It also makes it possible to strategically subvert hygiene, either by manipulating
-the environment that is passed in so that it no longer resembles the "standard" one,
-or by manipulating the quoted form and replacing referents with other values.
+As an example, if we were to try to define a Perl-like `unless` form
+in our putative Scheme-like language, we might have
 
-Now, the statements in the above few paragraphs aren't untrue, but they're perhaps
-somewhat underwhelming.  To get into why that is though, I think we need
-to examine the assumptions more closely.  What makes a macro "hygienic" anyway?
+    (define unless (qa qb)
+      (let* ((form1     '(lambda (x) (if (not x) $1 $2)))
+             (form2     (replace '$1 qa form1))
+             (form3     (replace '$2 qb form2)))
+        (eval form3 std-env))
+
+(Here the function `replace` replaces all occurences of a
+given symbol in a quoted form, with a given value.  I'm using it
+instead of quasiquoting because I find quasiquoting distasteful.)
+
+This macro would be applied like so:
+
+    ((unless '(do-one-thing x) '(do-something-else y)) (> a 0))
+
+There is of course nothing stopping a language from supporting
+language constructs to make macro definition and usage less awkward.
+
+### Hygiene
+
+The manipulation of syntax by functions that take syntax to syntax as we've
+done here is naturally hygienic.  This is because the environment passed
+to `eval` is explicitly given, and only the bindings in that environment
+will be used during the evaluation of `eval`.  Supplying only a standard
+environment, which does not contain any bindings specific to the active
+program, makes it impossible to capture a program binding during the
+evaluation of `eval`.
+
+It also makes it possible to strategically subvert hygiene, either by
+manipulating the environment that is passed in so that it no longer resembles
+the "standard" one, or by manipulating the quoted form and replacing referents
+with other values.
+
+Runtime values for ergonomic macros, meanwhile, are passed in as arguments to
+formed functions.  There appears to be an extra measure of "hygiene defense"
+in doing it this way:  If a function does refer to bindings that aren't known
+ahead-of-time, it won't be computed ahead-of-time itself.  (If the language
+supports some way of annotating what is expected to be computed ahead-of-time,
+it could, for example, warn the user in this case.)
+
+Now, the statements in the above few paragraphs aren't untrue, but they're
+perhaps somewhat underwhelming.  To get into why that is though, I think we
+need to examine the assumptions more closely.  What makes a macro "hygienic"
+anyway?
 
 I would submit that a programmer perceives a macro as _un_-hygienic when
 the names used in the macro become bind to values that they did not
